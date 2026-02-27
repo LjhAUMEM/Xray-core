@@ -192,3 +192,7 @@ func setReuseAddr(fd uintptr) error {
 func setReusePort(fd uintptr) error {
 	return nil
 }
+
+func setBrutalRate(conn net.Conn, rate uint64, cwnd uint32) error {
+	return nil
+}

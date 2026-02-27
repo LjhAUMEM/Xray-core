@@ -160,6 +160,9 @@ message SocketConfig {
   HappyEyeballsConfig happy_eyeballs = 22;
 
   repeated string trusted_x_forwarded_for = 23;
+
+  uint64 rate = 24;
+  uint32 cwnd = 25;
 }
 
 message HappyEyeballsConfig {

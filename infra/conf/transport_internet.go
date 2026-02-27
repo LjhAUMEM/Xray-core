@@ -1071,6 +1071,9 @@ type SocketConfig struct {
 	AddressPortStrategy   string                 `json:"addressPortStrategy"`
 	HappyEyeballsSettings *HappyEyeballsConfig   `json:"happyEyeballs"`
 	TrustedXForwardedFor  []string               `json:"trustedXForwardedFor"`
+
+	Rate uint64 `json:"rate"`
+	Cwnd uint32 `json:"cwnd"`
 }
 
 // Build implements Buildable.
@@ -1191,6 +1194,9 @@ func (c *SocketConfig) Build() (*internet.SocketConfig, error) {
 		AddressPortStrategy:  addressPortStrategy,
 		HappyEyeballs:        happyEyeballs,
 		TrustedXForwardedFor: c.TrustedXForwardedFor,
+
+		Rate: c.Rate,
+		Cwnd: c.Cwnd,
 	}, nil
 }
 

@@ -75,6 +75,22 @@ func (conn *UnixConnWrapper) RemoteAddr() net.Addr {
 	}
 }
 
+type brutalListener struct {
+	rate uint64
+	cwnd uint32
+	net.Listener
+}
+
+func (l *brutalListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return conn, err
+	}
+	err = setBrutalRate(conn, l.rate, l.cwnd)
+	errors.LogInfo(context.Background(), "setBrutalRate ", l.rate, " ", l.cwnd, " with err ", err)
+	return conn, nil
+}
+
 func (dl *DefaultListener) Listen(ctx context.Context, addr net.Addr, sockopt *SocketConfig) (l net.Listener, err error) {
 	var lc net.ListenConfig
 	var network, address string
@@ -167,6 +183,15 @@ func (dl *DefaultListener) Listen(ctx context.Context, addr net.Addr, sockopt *S
 	}
 
 	l, err = callback(lc.Listen(ctx, network, address))
+
+	if err == nil && sockopt != nil && sockopt.Rate > 0 {
+		l = &brutalListener{
+			rate:     sockopt.Rate,
+			cwnd:     sockopt.Cwnd,
+			Listener: l,
+		}
+	}
+
 	if err == nil && sockopt != nil && sockopt.AcceptProxyProtocol {
 		policyFunc := func(upstream net.Addr) (proxyproto.Policy, error) { return proxyproto.REQUIRE, nil }
 		l = &proxyproto.Listener{Listener: l, Policy: policyFunc}
