@@ -17,6 +17,7 @@ import (
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/common/net/cnc"
+	"github.com/xtls/xray-core/core"
 	"github.com/xtls/xray-core/transport/internet"
 	"github.com/xtls/xray-core/transport/internet/finalmask"
 	"github.com/xtls/xray-core/transport/internet/hysteria/congestion"
@@ -28,6 +29,7 @@ import (
 type client struct {
 	sync.Mutex
 
+	isrunning    func() bool
 	dest         net.Destination
 	config       *Config
 	tlsConfig    *gotls.Config
@@ -49,7 +51,10 @@ func (c *client) status() status {
 	case <-c.conn.Context().Done():
 		return StatusInactive
 	default:
-		return StatusActive
+		if c.isrunning() {
+			return StatusActive
+		}
+		return StatusInactive
 	}
 }
 
@@ -256,12 +261,13 @@ func (c *client) udp(ctx context.Context) (stat.Connection, error) {
 	return c.udpSM.udp()
 }
 
-func (c *client) clean() {
+func (c *client) clean() bool {
 	c.Lock()
+	defer c.Unlock()
 	if c.status() == StatusInactive {
 		c.close()
 	}
-	c.Unlock()
+	return c.status() == StatusNull
 }
 
 type dialerConf struct {
@@ -277,11 +283,13 @@ type clientManager struct {
 func (m *clientManager) clean() {
 	ticker := time.NewTicker(idleCleanupInterval)
 	for range ticker.C {
-		m.RLock()
-		for _, c := range m.m {
-			c.clean()
+		m.Lock()
+		for k, c := range m.m {
+			if c.clean() {
+				delete(m.m, k)
+			}
 		}
-		m.RUnlock()
+		m.Unlock()
 	}
 }
 
@@ -296,6 +304,7 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 		return nil, errors.New("tls config is nil")
 	}
 
+	instance := core.FromContext(ctx)
 	datagram := DatagramFromContext(ctx)
 	dest.Network = net.Network_UDP
 
@@ -314,7 +323,14 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 		manager.Lock()
 		c = manager.m[dialerConf{dest, streamSettings}]
 		if c == nil {
+			var isrunning func() bool
+			if instance == nil {
+				isrunning = func() bool { return true }
+			} else {
+				isrunning = instance.IsRunning
+			}
 			c = &client{
+				isrunning:    isrunning,
 				dest:         dest,
 				config:       streamSettings.ProtocolSettings.(*Config),
 				tlsConfig:    tlsConfig.GetTLSConfig(tls.WithDestination(dest)),
